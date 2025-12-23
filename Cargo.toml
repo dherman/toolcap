@@ -1,0 +1,11 @@
+[package]
+name = "toolcap"
+version = "0.1.0"
+edition = "2024"
+authors = ["Dave Herman <david.herman@gmail.com>"]
+description = "A library for specifying tool use permissions in agentic applications."
+readme = "README.md"
+repository = "https://github.com/dherman/toolcap"
+license = "MIT/Apache-2.0"
+
+[dependencies]
