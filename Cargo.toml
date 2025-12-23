@@ -8,4 +8,10 @@ readme = "README.md"
 repository = "https://github.com/dherman/toolcap"
 license = "MIT/Apache-2.0"
 
+[features]
+default = []
+acp = ["dep:sacp", "dep:serde_json"]
+
 [dependencies]
+sacp = { version = "9.0", optional = true }
+serde_json = { version = "1.0", optional = true }

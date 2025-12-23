@@ -6,15 +6,15 @@ This document outlines the implementation phases for the Toolcap MVP. Each phase
 
 Set up the Rust project structure and define the fundamental types.
 
-- [ ] Initialize Cargo workspace with `toolcap` library crate
-- [ ] Add `sacp` crate as a dependency for ACP types
-- [ ] Define `Outcome` enum with `Allow`, `Deny`, `Unknown` variants
-- [ ] Define `Operation` enum mirroring ACP `ToolKind` variants
-- [ ] Define `ExecuteOperation` struct to hold parsed command data
-- [ ] Define `Rule` struct pairing a `Matcher` with an `Outcome`
-- [ ] Define `Ruleset` struct as an ordered `Vec<Rule>`
-- [ ] Implement `Ruleset::evaluate(&self, op: &Operation) -> Outcome`
-- [ ] Add basic unit tests for ruleset evaluation with trivial matchers
+- [x] Initialize Cargo workspace with `toolcap` library crate
+- [x] Add `sacp` crate as a dependency for ACP types
+- [x] Define `Outcome` enum with `Allow`, `Deny`, `Unknown` variants
+- [x] Define `Operation` enum mirroring ACP `ToolKind` variants
+- [x] Define `ExecuteOperation` struct to hold parsed command data
+- [x] Define `Rule` struct pairing a `Matcher` with an `Outcome`
+- [x] Define `Ruleset` struct as an ordered `Vec<Rule>`
+- [x] Implement `Ruleset::evaluate(&self, op: &Operation) -> Outcome`
+- [x] Add basic unit tests for ruleset evaluation with trivial matchers
 
 ## Phase 2: Shell Command Parsing
 
@@ -34,16 +34,16 @@ Implement parsing of shell commands to enable fine-grained matching.
 
 Build the matcher system for execute operations.
 
-- [ ] Define `Matcher` enum/trait for composable predicates
-- [ ] Implement `Matcher::command(name)` for matching command names
-- [ ] Implement `Matcher::with_subcommand(subcmd)` for matching subcommands
-- [ ] Implement `Matcher::with_subcommands([...])` for matching any of several subcommands
-- [ ] Implement `Matcher::with_flag(flag)` for matching specific flags
-- [ ] Implement `Matcher::and(vec![...])` for conjunction
-- [ ] Implement `Matcher::or(vec![...])` for disjunction
-- [ ] Implement `Matcher::any_execute()` for matching any execute operation
-- [ ] Add unit tests for individual matcher types
-- [ ] Add unit tests for composed matchers
+- [x] Define `Matcher` enum/trait for composable predicates
+- [x] Implement `Matcher::command(name)` for matching command names
+- [x] Implement `Matcher::with_subcommand(subcmd)` for matching subcommands
+- [x] Implement `Matcher::with_subcommands([...])` for matching any of several subcommands
+- [x] Implement `Matcher::with_flag(flag)` for matching specific flags
+- [x] Implement `Matcher::and(vec![...])` for conjunction
+- [x] Implement `Matcher::or(vec![...])` for disjunction
+- [x] Implement `Matcher::any_execute()` for matching any execute operation
+- [x] Add unit tests for individual matcher types
+- [x] Add unit tests for composed matchers
 
 ## Phase 4: Compound Command Evaluation
 
@@ -62,7 +62,7 @@ Handle evaluation of pipelines and logical operators.
 
 Add support for restricting rules to directory subtrees.
 
-- [ ] Extend `ExecuteOperation` to include working directory context
+- [x] Extend `ExecuteOperation` to include working directory context
 - [ ] Implement `Matcher::within_directory(path)` matcher
 - [ ] Implement canonical path resolution for symlink handling
 - [ ] Implement directory containment check
@@ -84,8 +84,8 @@ Provide convenient abstractions for common command patterns.
 
 Connect Toolcap to the ACP protocol for use as a proxy.
 
-- [ ] Study `sacp` crate API for proxy implementation
-- [ ] Implement conversion from ACP `ToolCall` to Toolcap `Operation`
+- [x] Study `sacp` crate API for proxy implementation
+- [x] Implement conversion from ACP `ToolCall` to Toolcap `Operation`
 - [ ] Implement conversion from `Outcome` to ACP `PermissionOptionKind`
 - [ ] Create `ToolcapProxy` struct implementing ACP proxy interface
 - [ ] Implement permission request interception in proxy
