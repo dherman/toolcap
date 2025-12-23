@@ -40,6 +40,9 @@ pub mod shell;
 #[cfg(feature = "acp")]
 mod acp;
 
+#[cfg(feature = "matchers")]
+pub mod matchers;
+
 pub use outcome::Outcome;
 pub use operation::{Operation, ExecuteOperation};
 pub use matcher::Matcher;

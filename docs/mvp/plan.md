@@ -74,12 +74,12 @@ Add support for restricting rules to directory subtrees.
 
 Provide convenient abstractions for common command patterns.
 
-- [ ] Create `matchers` module for predefined matcher groups
-- [ ] Implement `ReadOnlyGit::matcher()` for safe git commands
-- [ ] Implement `Compilation::matcher()` for common build tools
-- [ ] Implement `SafeNpm::matcher()` for read-only npm commands
-- [ ] Document how to extend matcher groups with `Matcher::or`
-- [ ] Add unit tests for each matcher group
+- [x] Create `matchers` module for predefined matcher groups (feature-gated)
+- [x] Implement `ReadOnlyGit::matcher()` for safe git commands
+- [x] Implement `Compilation::matcher()` for common build tools
+- [x] Implement `SafeNpm::matcher()` for read-only npm commands
+- [x] Document how to extend matcher groups with `Matcher::or`
+- [x] Add unit tests for each matcher group
 
 ## Phase 7: ACP Integration
 

@@ -11,6 +11,7 @@ license = "MIT/Apache-2.0"
 [features]
 default = []
 acp = ["dep:sacp", "dep:serde_json"]
+matchers = []
 
 [dependencies]
 conch-parser = "0.1"
