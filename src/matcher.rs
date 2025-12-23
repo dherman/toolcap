@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::operation::{ExecuteOperation, Operation};
 
 /// A matcher is a predicate that determines whether a rule applies to an operation.
@@ -14,6 +16,11 @@ pub enum Matcher {
         subcommands: Option<Vec<String>>,
         required_flags: Vec<String>,
     },
+
+    /// Matches if the operation's working directory is within the specified directory.
+    ///
+    /// Uses canonical path resolution to handle symlinks.
+    WithinDirectory { path: PathBuf },
 
     /// Matches if all sub-matchers match (logical AND).
     And(Vec<Matcher>),
@@ -150,6 +157,30 @@ impl Matcher {
         Matcher::Or(matchers)
     }
 
+    /// Creates a matcher that matches if the operation's working directory is within
+    /// the specified directory subtree.
+    ///
+    /// This matcher uses canonical path resolution to handle symlinks, preventing
+    /// symlink-based bypasses of directory restrictions.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use toolcap::{Matcher, Operation};
+    ///
+    /// // Matches operations executed within /home/user/project
+    /// let m = Matcher::within_directory("/home/user/project");
+    ///
+    /// // Combine with command matchers for scoped rules
+    /// let scoped_npm = Matcher::and(vec![
+    ///     Matcher::command("npm"),
+    ///     Matcher::within_directory("/home/user/project"),
+    /// ]);
+    /// ```
+    pub fn within_directory(path: impl Into<PathBuf>) -> Self {
+        Matcher::WithinDirectory { path: path.into() }
+    }
+
     /// Tests whether this matcher matches the given operation.
     pub fn matches(&self, operation: &Operation) -> bool {
         match operation {
@@ -195,6 +226,16 @@ impl Matcher {
                 true
             }
 
+            Matcher::WithinDirectory { path } => {
+                // Get the operation's working directory
+                let Some(working_dir) = exec_op.working_dir() else {
+                    // No working directory context - can't verify containment
+                    return false;
+                };
+
+                is_within_directory(working_dir, path)
+            }
+
             Matcher::And(matchers) => matchers
                 .iter()
                 .all(|m| m.matches(&Operation::Execute(exec_op.clone()))),
@@ -204,6 +245,25 @@ impl Matcher {
                 .any(|m| m.matches(&Operation::Execute(exec_op.clone()))),
         }
     }
+}
+
+/// Checks if `child` is within the directory subtree rooted at `parent`.
+///
+/// Uses canonical path resolution to handle symlinks, preventing symlink-based
+/// bypasses of directory restrictions.
+///
+/// Returns `false` if either path cannot be canonicalized (e.g., doesn't exist).
+fn is_within_directory(child: &PathBuf, parent: &PathBuf) -> bool {
+    // Canonicalize both paths to resolve symlinks and get absolute paths
+    let Ok(canonical_child) = child.canonicalize() else {
+        return false;
+    };
+    let Ok(canonical_parent) = parent.canonicalize() else {
+        return false;
+    };
+
+    // Check if the child path starts with the parent path
+    canonical_child.starts_with(&canonical_parent)
 }
 
 #[cfg(test)]
@@ -279,5 +339,202 @@ mod tests {
             path: "/etc/passwd".into(),
         };
         assert!(!matcher.matches(&op));
+    }
+
+    mod directory_scoping {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn test_within_directory_matches_exact_dir() {
+            // Use the current directory which we know exists
+            let current_dir = std::env::current_dir().unwrap();
+            let matcher = Matcher::within_directory(&current_dir);
+            let op = Operation::execute_in("ls", &current_dir);
+            assert!(matcher.matches(&op));
+        }
+
+        #[test]
+        fn test_within_directory_matches_subdirectory() {
+            let current_dir = std::env::current_dir().unwrap();
+            let src_dir = current_dir.join("src");
+            let matcher = Matcher::within_directory(&current_dir);
+            let op = Operation::execute_in("ls", &src_dir);
+            assert!(matcher.matches(&op));
+        }
+
+        #[test]
+        fn test_within_directory_rejects_parent_directory() {
+            let current_dir = std::env::current_dir().unwrap();
+            let src_dir = current_dir.join("src");
+            let matcher = Matcher::within_directory(&src_dir);
+            // Operation in parent directory should not match
+            let op = Operation::execute_in("ls", &current_dir);
+            assert!(!matcher.matches(&op));
+        }
+
+        #[test]
+        fn test_within_directory_rejects_sibling_directory() {
+            let current_dir = std::env::current_dir().unwrap();
+            let src_dir = current_dir.join("src");
+            let docs_dir = current_dir.join("docs");
+            let matcher = Matcher::within_directory(&src_dir);
+            // Operation in sibling directory should not match
+            let op = Operation::execute_in("ls", &docs_dir);
+            assert!(!matcher.matches(&op));
+        }
+
+        #[test]
+        fn test_within_directory_no_working_dir_returns_false() {
+            let current_dir = std::env::current_dir().unwrap();
+            let matcher = Matcher::within_directory(&current_dir);
+            // Operation without working directory context
+            let op = Operation::execute("ls");
+            assert!(!matcher.matches(&op));
+        }
+
+        #[test]
+        fn test_within_directory_nonexistent_allowed_dir_returns_false() {
+            let current_dir = std::env::current_dir().unwrap();
+            let matcher = Matcher::within_directory("/nonexistent/path/that/does/not/exist");
+            let op = Operation::execute_in("ls", &current_dir);
+            // Cannot canonicalize nonexistent allowed directory
+            assert!(!matcher.matches(&op));
+        }
+
+        #[test]
+        fn test_within_directory_nonexistent_working_dir_returns_false() {
+            let current_dir = std::env::current_dir().unwrap();
+            let matcher = Matcher::within_directory(&current_dir);
+            let op = Operation::execute_in("ls", "/nonexistent/path/that/does/not/exist");
+            // Cannot canonicalize nonexistent working directory
+            assert!(!matcher.matches(&op));
+        }
+
+        #[test]
+        fn test_within_directory_combined_with_command_matcher() {
+            let current_dir = std::env::current_dir().unwrap();
+            let src_dir = current_dir.join("src");
+
+            // Only allow npm commands within src directory
+            let matcher = Matcher::and(vec![
+                Matcher::command("npm"),
+                Matcher::within_directory(&src_dir),
+            ]);
+
+            // npm in src - should match
+            let op = Operation::execute_in("npm install", &src_dir);
+            assert!(matcher.matches(&op));
+
+            // npm in parent - should not match
+            let op = Operation::execute_in("npm install", &current_dir);
+            assert!(!matcher.matches(&op));
+
+            // non-npm in src - should not match
+            let op = Operation::execute_in("cargo build", &src_dir);
+            assert!(!matcher.matches(&op));
+        }
+
+        #[test]
+        fn test_within_directory_or_multiple_dirs() {
+            let current_dir = std::env::current_dir().unwrap();
+            let src_dir = current_dir.join("src");
+            let docs_dir = current_dir.join("docs");
+
+            // Allow in either src or docs
+            let matcher = Matcher::or(vec![
+                Matcher::within_directory(&src_dir),
+                Matcher::within_directory(&docs_dir),
+            ]);
+
+            let op = Operation::execute_in("ls", &src_dir);
+            assert!(matcher.matches(&op));
+
+            let op = Operation::execute_in("ls", &docs_dir);
+            assert!(matcher.matches(&op));
+
+            // Not in src or docs - should not match
+            let op = Operation::execute_in("ls", &current_dir);
+            assert!(!matcher.matches(&op));
+        }
+
+        #[test]
+        fn test_symlink_resolution() {
+            // Create a temporary directory structure with a symlink
+            let temp_dir = std::env::temp_dir().join("toolcap_test_symlinks");
+            let _ = fs::remove_dir_all(&temp_dir); // Clean up any previous test
+            fs::create_dir_all(&temp_dir).unwrap();
+
+            let real_dir = temp_dir.join("real");
+            let outside_dir = temp_dir.join("outside");
+            fs::create_dir_all(&real_dir).unwrap();
+            fs::create_dir_all(&outside_dir).unwrap();
+
+            // Create a symlink inside real_dir that points to outside_dir
+            let symlink_path = real_dir.join("sneaky_link");
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&outside_dir, &symlink_path).unwrap();
+            #[cfg(windows)]
+            std::os::windows::fs::symlink_dir(&outside_dir, &symlink_path).unwrap();
+
+            // Matcher allows only real_dir
+            let matcher = Matcher::within_directory(&real_dir);
+
+            // Direct access to outside_dir should be denied
+            let op = Operation::execute_in("ls", &outside_dir);
+            assert!(!matcher.matches(&op));
+
+            // Access through symlink should also be denied (canonical path resolves outside)
+            let op = Operation::execute_in("ls", &symlink_path);
+            assert!(!matcher.matches(&op));
+
+            // Access to real_dir itself should be allowed
+            let op = Operation::execute_in("ls", &real_dir);
+            assert!(matcher.matches(&op));
+
+            // Clean up
+            let _ = fs::remove_dir_all(&temp_dir);
+        }
+
+        #[test]
+        fn test_symlink_to_subdirectory() {
+            // Create a temporary directory structure
+            let temp_dir = std::env::temp_dir().join("toolcap_test_symlinks_subdir");
+            let _ = fs::remove_dir_all(&temp_dir);
+            fs::create_dir_all(&temp_dir).unwrap();
+
+            let project_dir = temp_dir.join("project");
+            let subdir = project_dir.join("subdir");
+            fs::create_dir_all(&subdir).unwrap();
+
+            // Create a symlink inside project that points to its own subdir
+            let symlink_path = project_dir.join("link_to_subdir");
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&subdir, &symlink_path).unwrap();
+            #[cfg(windows)]
+            std::os::windows::fs::symlink_dir(&subdir, &symlink_path).unwrap();
+
+            // Matcher allows project_dir
+            let matcher = Matcher::within_directory(&project_dir);
+
+            // Access through symlink to internal subdir should be allowed
+            // (canonical path resolves to inside project_dir)
+            let op = Operation::execute_in("ls", &symlink_path);
+            assert!(matcher.matches(&op));
+
+            // Clean up
+            let _ = fs::remove_dir_all(&temp_dir);
+        }
+
+        #[test]
+        fn test_deeply_nested_path() {
+            let current_dir = std::env::current_dir().unwrap();
+            // src/shell.rs should be within current_dir
+            let nested_path = current_dir.join("src");
+
+            let matcher = Matcher::within_directory(&current_dir);
+            let op = Operation::execute_in("ls", &nested_path);
+            assert!(matcher.matches(&op));
+        }
     }
 }

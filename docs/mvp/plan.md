@@ -64,11 +64,11 @@ Handle evaluation of pipelines and logical operators.
 Add support for restricting rules to directory subtrees.
 
 - [x] Extend `ExecuteOperation` to include working directory context
-- [ ] Implement `Matcher::within_directory(path)` matcher
-- [ ] Implement canonical path resolution for symlink handling
-- [ ] Implement directory containment check
-- [ ] Add unit tests for directory scoping
-- [ ] Add unit tests for symlink edge cases
+- [x] Implement `Matcher::within_directory(path)` matcher
+- [x] Implement canonical path resolution for symlink handling
+- [x] Implement directory containment check
+- [x] Add unit tests for directory scoping
+- [x] Add unit tests for symlink edge cases
 
 ## Phase 6: Matcher Groups
 
