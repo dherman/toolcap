@@ -35,6 +35,7 @@ mod operation;
 mod matcher;
 mod rule;
 mod ruleset;
+pub mod shell;
 
 #[cfg(feature = "acp")]
 mod acp;

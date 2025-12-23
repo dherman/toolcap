@@ -20,15 +20,16 @@ Set up the Rust project structure and define the fundamental types.
 
 Implement parsing of shell commands to enable fine-grained matching.
 
-- [ ] Evaluate shell parsing crates (e.g., `shell-words`, `shlex`, or custom)
-- [ ] Define `ParsedCommand` struct for a single command (name, args, flags)
-- [ ] Define `ShellAst` enum representing command structures (simple, pipeline, logical operators)
-- [ ] Implement parser for simple commands with arguments and flags
-- [ ] Implement parser for pipelines (`|`)
-- [ ] Implement parser for logical operators (`&&`, `||`, `;`)
-- [ ] Handle quoted strings and escape sequences
-- [ ] Add unit tests for various shell command patterns
-- [ ] Document limitations and unsupported shell features
+- [x] Evaluate shell parsing crates (e.g., `shell-words`, `shlex`, or custom)
+  - Selected `conch-parser` for full POSIX shell parsing
+- [x] Define `ParsedCommand` struct for a single command (name, args, flags)
+- [x] Define `ShellAst` enum representing command structures (simple, pipeline, logical operators)
+- [x] Implement parser for simple commands with arguments and flags
+- [x] Implement parser for pipelines (`|`)
+- [x] Implement parser for logical operators (`&&`, `||`, `;`)
+- [x] Handle quoted strings and escape sequences
+- [x] Add unit tests for various shell command patterns (33 tests)
+- [x] Document limitations and unsupported shell features
 
 ## Phase 3: Execute Matchers
 
@@ -49,14 +50,14 @@ Build the matcher system for execute operations.
 
 Handle evaluation of pipelines and logical operators.
 
-- [ ] Implement recursive evaluation of `ShellAst` nodes against a ruleset
-- [ ] Define evaluation semantics: compound allowed only if all parts allowed
-- [ ] Define evaluation semantics: compound denied if any part denied
-- [ ] Define evaluation semantics: compound unknown if any part unknown and none denied
-- [ ] Integrate compound evaluation into `Ruleset::evaluate`
-- [ ] Add unit tests for pipeline evaluation
-- [ ] Add unit tests for logical operator evaluation
-- [ ] Add unit tests for mixed compound commands
+- [x] Implement recursive evaluation of `ShellAst` nodes against a ruleset
+- [x] Define evaluation semantics: compound allowed only if all parts allowed
+- [x] Define evaluation semantics: compound denied if any part denied
+- [x] Define evaluation semantics: compound unknown if any part unknown and none denied
+- [x] Integrate compound evaluation into `Ruleset::evaluate`
+- [x] Add unit tests for pipeline evaluation
+- [x] Add unit tests for logical operator evaluation
+- [x] Add unit tests for mixed compound commands
 
 ## Phase 5: Directory Scoping
 

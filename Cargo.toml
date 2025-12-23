@@ -13,5 +13,6 @@ default = []
 acp = ["dep:sacp", "dep:serde_json"]
 
 [dependencies]
+conch-parser = "0.1"
 sacp = { version = "9.0", optional = true }
 serde_json = { version = "1.0", optional = true }
