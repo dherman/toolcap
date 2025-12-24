@@ -87,11 +87,11 @@ Connect Toolcap to the ACP protocol for use as a proxy.
 
 - [x] Study `sacp` crate API for proxy implementation
 - [x] Implement conversion from ACP `ToolCall` to Toolcap `Operation`
-- [ ] Implement conversion from `Outcome` to ACP `PermissionOptionKind`
-- [ ] Create `ToolcapProxy` struct implementing ACP proxy interface
-- [ ] Implement permission request interception in proxy
-- [ ] Implement forwarding of `Unknown` outcomes to upstream client
-- [ ] Add integration tests with mock ACP messages
+- [x] Implement conversion from `Outcome` to ACP `PermissionOptionKind`
+- [x] Create `ToolcapProxy` struct implementing ACP proxy interface
+- [x] Implement permission request interception in proxy
+- [x] Implement forwarding of `Unknown` outcomes to upstream client
+- [x] Add integration tests with mock ACP messages
 
 ## Phase 8: Integration Testing with Claude Code
 

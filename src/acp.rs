@@ -16,8 +16,38 @@
 //! // When you receive a permission request from an ACP agent:
 //! let outcome = ruleset.evaluate_request(&request);
 //! ```
+//!
+//! # Using the ToolcapProxy
+//!
+//! The [`ToolcapProxy`] struct wraps a ruleset and provides methods for
+//! handling permission requests in a proxy context:
+//!
+//! ```ignore
+//! use toolcap::{Ruleset, Rule, Matcher, Outcome};
+//! use toolcap::acp::ToolcapProxy;
+//!
+//! let ruleset = Ruleset::new(vec![
+//!     Rule::new(Matcher::command("git").with_subcommand("status"), Outcome::Allow),
+//!     Rule::new(Matcher::command("sudo"), Outcome::Deny),
+//! ]);
+//!
+//! let proxy = ToolcapProxy::new(ruleset);
+//!
+//! // When handling a permission request:
+//! match proxy.handle_permission_request(&request) {
+//!     PermissionDecision::Respond(response) => {
+//!         // Send this response back to the agent
+//!     }
+//!     PermissionDecision::Forward => {
+//!         // Forward to the upstream client for user decision
+//!     }
+//! }
+//! ```
 
-use sacp::schema::{RequestPermissionRequest, ToolKind};
+use sacp::schema::{
+    PermissionOption, PermissionOptionId, PermissionOptionKind, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, ToolKind,
+};
 
 use crate::operation::{ExecuteOperation, Operation};
 use crate::outcome::Outcome;
@@ -190,6 +220,204 @@ fn extract_string_field(input: Option<&serde_json::Value>, field: &str) -> Optio
         .map(|s: &str| s.to_string())
 }
 
+// =============================================================================
+// Outcome to PermissionOptionKind conversion
+// =============================================================================
+
+impl Outcome {
+    /// Returns the corresponding `PermissionOptionKind` for this outcome.
+    ///
+    /// - `Allow` maps to `AllowOnce`
+    /// - `Deny` maps to `RejectOnce`
+    /// - `Unknown` returns `None` (should be forwarded to user)
+    ///
+    /// Use `to_option_kind_remembered` for "always" variants.
+    pub fn to_option_kind(&self) -> Option<PermissionOptionKind> {
+        match self {
+            Outcome::Allow => Some(PermissionOptionKind::AllowOnce),
+            Outcome::Deny => Some(PermissionOptionKind::RejectOnce),
+            Outcome::Unknown => None,
+        }
+    }
+
+    /// Returns the "remembered" `PermissionOptionKind` for this outcome.
+    ///
+    /// - `Allow` maps to `AllowAlways`
+    /// - `Deny` maps to `RejectAlways`
+    /// - `Unknown` returns `None` (should be forwarded to user)
+    pub fn to_option_kind_remembered(&self) -> Option<PermissionOptionKind> {
+        match self {
+            Outcome::Allow => Some(PermissionOptionKind::AllowAlways),
+            Outcome::Deny => Some(PermissionOptionKind::RejectAlways),
+            Outcome::Unknown => None,
+        }
+    }
+}
+
+// =============================================================================
+// ToolcapProxy - Permission request handling for proxies
+// =============================================================================
+
+/// The decision made by the proxy for a permission request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PermissionDecision {
+    /// The proxy has decided and can respond directly to the agent.
+    Respond(RequestPermissionResponse),
+
+    /// The proxy cannot decide; forward to the upstream client.
+    Forward,
+}
+
+/// A proxy component that evaluates permission requests against a ruleset.
+///
+/// `ToolcapProxy` wraps a [`Ruleset`] and provides methods for handling
+/// ACP permission requests in a proxy context. When a permission request
+/// is received:
+///
+/// - If the ruleset produces `Allow` or `Deny`, the proxy creates a response
+///   selecting the appropriate option from the request's available options.
+/// - If the ruleset produces `Unknown`, the proxy signals that the request
+///   should be forwarded to the upstream client for user decision.
+///
+/// # Example
+///
+/// ```ignore
+/// use toolcap::{Ruleset, Rule, Matcher, Outcome};
+/// use toolcap::acp::{ToolcapProxy, PermissionDecision};
+///
+/// let ruleset = Ruleset::new(vec![
+///     Rule::new(Matcher::command("git").with_subcommand("status"), Outcome::Allow),
+///     Rule::new(Matcher::command("sudo"), Outcome::Deny),
+/// ]);
+///
+/// let proxy = ToolcapProxy::new(ruleset);
+///
+/// // In your message handler:
+/// match proxy.handle_permission_request(&request) {
+///     PermissionDecision::Respond(response) => {
+///         // Send response back to agent
+///     }
+///     PermissionDecision::Forward => {
+///         // Forward to upstream client
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct ToolcapProxy {
+    ruleset: Ruleset,
+    /// Whether to use "Always" variants when responding.
+    remember_decisions: bool,
+}
+
+impl ToolcapProxy {
+    /// Creates a new proxy with the given ruleset.
+    ///
+    /// By default, decisions are not remembered (uses `AllowOnce`/`RejectOnce`).
+    pub fn new(ruleset: Ruleset) -> Self {
+        Self {
+            ruleset,
+            remember_decisions: false,
+        }
+    }
+
+    /// Sets whether the proxy should use "Always" variants for responses.
+    ///
+    /// When `true`, the proxy will select `AllowAlways` or `RejectAlways`
+    /// options when available.
+    pub fn with_remembered_decisions(mut self, remember: bool) -> Self {
+        self.remember_decisions = remember;
+        self
+    }
+
+    /// Returns a reference to the underlying ruleset.
+    pub fn ruleset(&self) -> &Ruleset {
+        &self.ruleset
+    }
+
+    /// Handles a permission request, returning either a response or a forward decision.
+    ///
+    /// This evaluates the request against the ruleset and:
+    /// - For `Allow`/`Deny`: finds the matching option from the request and
+    ///   creates a response selecting that option.
+    /// - For `Unknown`: returns `PermissionDecision::Forward`.
+    ///
+    /// If the expected option kind is not available in the request's options,
+    /// falls back to `Forward`.
+    pub fn handle_permission_request(
+        &self,
+        request: &RequestPermissionRequest,
+    ) -> PermissionDecision {
+        let outcome = self.ruleset.evaluate_request(request);
+
+        // Determine which option kind we're looking for
+        let target_kind = if self.remember_decisions {
+            outcome.to_option_kind_remembered()
+        } else {
+            outcome.to_option_kind()
+        };
+
+        // If outcome is Unknown, we should forward
+        let Some(target_kind) = target_kind else {
+            return PermissionDecision::Forward;
+        };
+
+        // Find a matching option in the request
+        if let Some(option) = find_option_by_kind(&request.options, target_kind) {
+            PermissionDecision::Respond(RequestPermissionResponse {
+                outcome: RequestPermissionOutcome::Selected {
+                    option_id: option.id.clone(),
+                },
+                meta: None,
+            })
+        } else if self.remember_decisions {
+            // Fall back to non-remembered variant if remembered not available
+            if let Some(fallback_kind) = outcome.to_option_kind() {
+                if let Some(option) = find_option_by_kind(&request.options, fallback_kind) {
+                    return PermissionDecision::Respond(RequestPermissionResponse {
+                        outcome: RequestPermissionOutcome::Selected {
+                            option_id: option.id.clone(),
+                        },
+                        meta: None,
+                    });
+                }
+            }
+            // No suitable option found, must forward
+            PermissionDecision::Forward
+        } else {
+            // No suitable option found, must forward
+            PermissionDecision::Forward
+        }
+    }
+
+    /// Evaluates a request and returns the outcome without creating a response.
+    ///
+    /// This is useful when you need the outcome for logging or other purposes
+    /// before deciding how to handle the request.
+    pub fn evaluate(&self, request: &RequestPermissionRequest) -> Outcome {
+        self.ruleset.evaluate_request(request)
+    }
+}
+
+/// Finds an option with the specified kind in the options list.
+fn find_option_by_kind(
+    options: &[PermissionOption],
+    kind: PermissionOptionKind,
+) -> Option<&PermissionOption> {
+    options.iter().find(|opt| opt.kind == kind)
+}
+
+/// Creates a permission option with the given ID and kind.
+///
+/// This is a helper for creating options in tests.
+pub fn make_permission_option(id: impl Into<String>, kind: PermissionOptionKind) -> PermissionOption {
+    PermissionOption {
+        id: PermissionOptionId::from(id.into()),
+        kind,
+        name: String::new(),
+        meta: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,5 +497,281 @@ mod tests {
         let req = make_request(ToolKind::Think, None);
         let op = Operation::from_request(&req);
         assert_eq!(op, Operation::Think);
+    }
+
+    mod outcome_conversion {
+        use super::*;
+
+        #[test]
+        fn test_allow_to_option_kind() {
+            assert_eq!(
+                Outcome::Allow.to_option_kind(),
+                Some(PermissionOptionKind::AllowOnce)
+            );
+            assert_eq!(
+                Outcome::Allow.to_option_kind_remembered(),
+                Some(PermissionOptionKind::AllowAlways)
+            );
+        }
+
+        #[test]
+        fn test_deny_to_option_kind() {
+            assert_eq!(
+                Outcome::Deny.to_option_kind(),
+                Some(PermissionOptionKind::RejectOnce)
+            );
+            assert_eq!(
+                Outcome::Deny.to_option_kind_remembered(),
+                Some(PermissionOptionKind::RejectAlways)
+            );
+        }
+
+        #[test]
+        fn test_unknown_to_option_kind() {
+            assert_eq!(Outcome::Unknown.to_option_kind(), None);
+            assert_eq!(Outcome::Unknown.to_option_kind_remembered(), None);
+        }
+    }
+
+    mod toolcap_proxy {
+        use super::*;
+
+        fn make_request_with_options(
+            kind: ToolKind,
+            raw_input: Option<serde_json::Value>,
+            options: Vec<PermissionOption>,
+        ) -> RequestPermissionRequest {
+            RequestPermissionRequest {
+                session_id: "test-session".to_string().into(),
+                tool_call: ToolCallUpdate {
+                    id: ToolCallId::from("test-call"),
+                    fields: ToolCallUpdateFields {
+                        kind: Some(kind),
+                        raw_input,
+                        ..Default::default()
+                    },
+                    meta: None,
+                },
+                options,
+                meta: None,
+            }
+        }
+
+        fn standard_options() -> Vec<PermissionOption> {
+            vec![
+                make_permission_option("allow-once", PermissionOptionKind::AllowOnce),
+                make_permission_option("allow-always", PermissionOptionKind::AllowAlways),
+                make_permission_option("reject-once", PermissionOptionKind::RejectOnce),
+                make_permission_option("reject-always", PermissionOptionKind::RejectAlways),
+            ]
+        }
+
+        #[test]
+        fn test_proxy_allows_matching_command() {
+            let ruleset = Ruleset::new(vec![Rule::new(
+                Matcher::command("git").with_subcommand("status"),
+                Outcome::Allow,
+            )]);
+            let proxy = ToolcapProxy::new(ruleset);
+
+            let req = make_request_with_options(
+                ToolKind::Execute,
+                Some(json!({"command": "git status"})),
+                standard_options(),
+            );
+
+            match proxy.handle_permission_request(&req) {
+                PermissionDecision::Respond(response) => {
+                    assert_eq!(
+                        response.outcome,
+                        RequestPermissionOutcome::Selected {
+                            option_id: PermissionOptionId::from("allow-once".to_string())
+                        }
+                    );
+                }
+                PermissionDecision::Forward => panic!("Expected Respond, got Forward"),
+            }
+        }
+
+        #[test]
+        fn test_proxy_denies_matching_command() {
+            let ruleset = Ruleset::new(vec![Rule::new(Matcher::command("sudo"), Outcome::Deny)]);
+            let proxy = ToolcapProxy::new(ruleset);
+
+            let req = make_request_with_options(
+                ToolKind::Execute,
+                Some(json!({"command": "sudo rm -rf /"})),
+                standard_options(),
+            );
+
+            match proxy.handle_permission_request(&req) {
+                PermissionDecision::Respond(response) => {
+                    assert_eq!(
+                        response.outcome,
+                        RequestPermissionOutcome::Selected {
+                            option_id: PermissionOptionId::from("reject-once".to_string())
+                        }
+                    );
+                }
+                PermissionDecision::Forward => panic!("Expected Respond, got Forward"),
+            }
+        }
+
+        #[test]
+        fn test_proxy_forwards_unknown_command() {
+            let ruleset = Ruleset::new(vec![Rule::new(
+                Matcher::command("git").with_subcommand("status"),
+                Outcome::Allow,
+            )]);
+            let proxy = ToolcapProxy::new(ruleset);
+
+            let req = make_request_with_options(
+                ToolKind::Execute,
+                Some(json!({"command": "npm install"})),
+                standard_options(),
+            );
+
+            assert_eq!(
+                proxy.handle_permission_request(&req),
+                PermissionDecision::Forward
+            );
+        }
+
+        #[test]
+        fn test_proxy_with_remembered_decisions() {
+            let ruleset = Ruleset::new(vec![Rule::new(
+                Matcher::command("git").with_subcommand("status"),
+                Outcome::Allow,
+            )]);
+            let proxy = ToolcapProxy::new(ruleset).with_remembered_decisions(true);
+
+            let req = make_request_with_options(
+                ToolKind::Execute,
+                Some(json!({"command": "git status"})),
+                standard_options(),
+            );
+
+            match proxy.handle_permission_request(&req) {
+                PermissionDecision::Respond(response) => {
+                    assert_eq!(
+                        response.outcome,
+                        RequestPermissionOutcome::Selected {
+                            option_id: PermissionOptionId::from("allow-always".to_string())
+                        }
+                    );
+                }
+                PermissionDecision::Forward => panic!("Expected Respond, got Forward"),
+            }
+        }
+
+        #[test]
+        fn test_proxy_falls_back_to_once_if_always_not_available() {
+            let ruleset = Ruleset::new(vec![Rule::new(
+                Matcher::command("git").with_subcommand("status"),
+                Outcome::Allow,
+            )]);
+            let proxy = ToolcapProxy::new(ruleset).with_remembered_decisions(true);
+
+            // Only provide "once" options
+            let options = vec![
+                make_permission_option("allow-once", PermissionOptionKind::AllowOnce),
+                make_permission_option("reject-once", PermissionOptionKind::RejectOnce),
+            ];
+
+            let req = make_request_with_options(
+                ToolKind::Execute,
+                Some(json!({"command": "git status"})),
+                options,
+            );
+
+            match proxy.handle_permission_request(&req) {
+                PermissionDecision::Respond(response) => {
+                    assert_eq!(
+                        response.outcome,
+                        RequestPermissionOutcome::Selected {
+                            option_id: PermissionOptionId::from("allow-once".to_string())
+                        }
+                    );
+                }
+                PermissionDecision::Forward => panic!("Expected Respond, got Forward"),
+            }
+        }
+
+        #[test]
+        fn test_proxy_forwards_if_no_suitable_option() {
+            let ruleset = Ruleset::new(vec![Rule::new(
+                Matcher::command("git").with_subcommand("status"),
+                Outcome::Allow,
+            )]);
+            let proxy = ToolcapProxy::new(ruleset);
+
+            // Only provide reject options (no allow options)
+            let options = vec![
+                make_permission_option("reject-once", PermissionOptionKind::RejectOnce),
+                make_permission_option("reject-always", PermissionOptionKind::RejectAlways),
+            ];
+
+            let req = make_request_with_options(
+                ToolKind::Execute,
+                Some(json!({"command": "git status"})),
+                options,
+            );
+
+            // Should forward because there's no AllowOnce option to select
+            assert_eq!(
+                proxy.handle_permission_request(&req),
+                PermissionDecision::Forward
+            );
+        }
+
+        #[test]
+        fn test_proxy_evaluate_returns_outcome() {
+            let ruleset = Ruleset::new(vec![
+                Rule::new(
+                    Matcher::command("git").with_subcommand("status"),
+                    Outcome::Allow,
+                ),
+                Rule::new(Matcher::command("sudo"), Outcome::Deny),
+            ]);
+            let proxy = ToolcapProxy::new(ruleset);
+
+            let req = make_request_with_options(
+                ToolKind::Execute,
+                Some(json!({"command": "git status"})),
+                vec![],
+            );
+            assert_eq!(proxy.evaluate(&req), Outcome::Allow);
+
+            let req = make_request_with_options(
+                ToolKind::Execute,
+                Some(json!({"command": "sudo rm -rf /"})),
+                vec![],
+            );
+            assert_eq!(proxy.evaluate(&req), Outcome::Deny);
+
+            let req = make_request_with_options(
+                ToolKind::Execute,
+                Some(json!({"command": "npm install"})),
+                vec![],
+            );
+            assert_eq!(proxy.evaluate(&req), Outcome::Unknown);
+        }
+
+        #[test]
+        fn test_proxy_ruleset_accessor() {
+            let ruleset = Ruleset::new(vec![Rule::new(
+                Matcher::command("git"),
+                Outcome::Allow,
+            )]);
+            let proxy = ToolcapProxy::new(ruleset.clone());
+
+            // Verify the ruleset is accessible
+            let req = make_request_with_options(
+                ToolKind::Execute,
+                Some(json!({"command": "git status"})),
+                vec![],
+            );
+            assert_eq!(proxy.ruleset().evaluate_request(&req), Outcome::Allow);
+        }
     }
 }
