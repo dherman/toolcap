@@ -31,7 +31,7 @@ assert_eq!(ruleset.evaluate(&op), Outcome::Allow);
 
 ## Example: Preset permissions for Claude Code (via ACP)
 
-Toolcap includes an example proxy (`toolcap_proxy`) that integrates with `sacp-conductor` to provide automatic permission handling for Claude Code in [Zed](https://zed.dev).
+The repo includes an example [ACP](https://agentclientprotocol.com) proxy (`toolcap_proxy`) to provide automatic permission handling for Claude Code in [Zed](https://zed.dev).
 
 ### Prerequisites
 
