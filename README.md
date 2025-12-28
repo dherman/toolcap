@@ -29,9 +29,9 @@ let op = Operation::execute("git status");
 assert_eq!(ruleset.evaluate(&op), Outcome::Allow);
 ```
 
-## Using with Zed and Claude Code
+## Example: Preset permissions for Claude Code (via ACP)
 
-Toolcap includes an example proxy (`toolcap_proxy`) that integrates with `sacp-conductor` to provide automatic permission handling for Claude Code in Zed.
+Toolcap includes an example proxy (`toolcap_proxy`) that integrates with `sacp-conductor` to provide automatic permission handling for Claude Code in [Zed](https://zed.dev).
 
 ### Prerequisites
 
