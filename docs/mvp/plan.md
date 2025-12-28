@@ -102,5 +102,5 @@ Validate the full system with a real agent.
 - [x] Create test ruleset with allow/deny rules
 - [x] Verify allowed commands execute without prompts
 - [x] Verify denied commands are blocked
-- [ ] Verify unknown commands prompt the user
-- [ ] Document integration setup steps
+- [x] Verify unknown commands prompt the user
+- [x] Document integration setup steps (see README.md)
