@@ -51,21 +51,16 @@ Add to `~/.config/zed/settings.json`:
 
 ```json
 {
-  "agent": {
-    "profiles": {
-      "toolcap": {
-        "provider": "acp",
-        "name": "Toolcapped Claude",
-        "configuration": {
-          "command": "sacp-conductor",
-          "args": [
-            "agent",
-            "/path/to/toolcap/target/release/examples/toolcap_proxy",
-            "--",
-            "npx", "-y", "@zed-industries/claude-code-acp"
-          ]
-        }
-      }
+  "agent_servers": {
+    "Claude Code (with default permissions)": {
+      "type": "custom",
+      "command": "/path/to/home/.cargo/bin/sacp-conductor",
+      "args": [
+        "--debug",
+        "agent",
+        "/path/to/toolcap/target/release/examples/toolcap_proxy",
+        "npx -y '@zed-industries/claude-code-acp'"
+      ]
     }
   }
 }
@@ -129,7 +124,7 @@ Log format:
 
 ## Features
 
-- **Shell parsing**: Full POSIX shell command parsing via `conch-parser`
+- **Shell parsing**: Full POSIX shell command parsing
 - **Compound commands**: Evaluate pipelines (`|`), logical operators (`&&`, `||`)
 - **Composable matchers**: `command()`, `with_subcommand()`, `with_flag()`, `and()`, `or()`
 - **Directory scoping**: Restrict rules to specific directory trees with `within_directory()`
