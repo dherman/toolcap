@@ -38,7 +38,7 @@ mod ruleset;
 pub mod shell;
 
 #[cfg(feature = "acp")]
-mod acp;
+pub mod acp;
 
 #[cfg(feature = "matchers")]
 pub mod matchers;

@@ -97,9 +97,9 @@ Connect Toolcap to the ACP protocol for use as a proxy.
 
 Validate the full system with a real agent.
 
-- [ ] Set up test environment with `sacp-conductor`
-- [ ] Configure Zed to use Toolcap as a proxy to Claude Code ACP
-- [ ] Create test ruleset with allow/deny rules
+- [x] Set up test environment with `sacp-conductor`
+- [x] Configure Zed to use Toolcap as a proxy to Claude Code ACP
+- [x] Create test ruleset with allow/deny rules
 - [ ] Verify allowed commands execute without prompts
 - [ ] Verify denied commands are blocked
 - [ ] Verify unknown commands prompt the user
