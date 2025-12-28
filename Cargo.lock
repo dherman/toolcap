@@ -1147,21 +1147,12 @@ dependencies = [
 name = "toolcap"
 version = "0.1.0"
 dependencies = [
- "conch-parser",
- "sacp",
- "serde_json",
-]
-
-[[package]]
-name = "toolcap-proxy"
-version = "0.1.0"
-dependencies = [
  "clap",
+ "conch-parser",
  "sacp",
  "serde_json",
  "tokio",
  "tokio-util",
- "toolcap",
  "tracing",
  "tracing-subscriber",
 ]

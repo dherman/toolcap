@@ -1,13 +1,19 @@
-//! Toolcap ACP Proxy
+//! Toolcap ACP Proxy Example
 //!
 //! An ACP proxy that evaluates permission requests against a Toolcap ruleset.
 //! Insert this proxy into an ACP conductor chain to automatically allow/deny
 //! tool calls based on your configured rules.
 //!
+//! # Building
+//!
+//! ```bash
+//! cargo build --release --example toolcap_proxy
+//! ```
+//!
 //! # Usage
 //!
 //! ```bash
-//! sacp-conductor toolcap-proxy -- npx -y '@zed-industries/claude-code-acp'
+//! sacp-conductor agent target/release/examples/toolcap_proxy -- npx -y '@zed-industries/claude-code-acp'
 //! ```
 
 use clap::Parser;

@@ -31,7 +31,7 @@ assert_eq!(ruleset.evaluate(&op), Outcome::Allow);
 
 ## Using with Zed and Claude Code
 
-Toolcap includes a proxy binary (`toolcap-proxy`) that integrates with `sacp-conductor` to provide automatic permission handling for Claude Code in Zed.
+Toolcap includes an example proxy (`toolcap_proxy`) that integrates with `sacp-conductor` to provide automatic permission handling for Claude Code in Zed.
 
 ### Prerequisites
 
@@ -40,9 +40,9 @@ Toolcap includes a proxy binary (`toolcap-proxy`) that integrates with `sacp-con
    cargo install sacp-conductor --force
    ```
 
-2. Build toolcap-proxy:
+2. Build the example proxy:
    ```bash
-   cargo build --release -p toolcap-proxy
+   cargo build --release --example toolcap_proxy --features="acp matchers"
    ```
 
 ### Zed Configuration
@@ -60,7 +60,7 @@ Add to `~/.config/zed/settings.json`:
           "command": "sacp-conductor",
           "args": [
             "agent",
-            "/path/to/toolcap/target/release/toolcap-proxy",
+            "/path/to/toolcap/target/release/examples/toolcap_proxy",
             "--",
             "npx", "-y", "@zed-industries/claude-code-acp"
           ]
@@ -97,10 +97,10 @@ The proxy includes a default ruleset:
 The conductor chain is:
 
 ```
-Zed (Client) <-> sacp-conductor <-> toolcap-proxy <-> claude-code-acp (Agent)
+Zed (Client) <-> sacp-conductor <-> toolcap_proxy <-> claude-code-acp (Agent)
 ```
 
-1. **toolcap-proxy** intercepts `request_permission` requests from the agent
+1. **toolcap_proxy** intercepts `request_permission` requests from the agent
 2. Evaluates them against the built-in ruleset
 3. For **Allow** outcomes: auto-responds with permission granted
 4. For **Deny** outcomes: auto-responds with permission rejected
