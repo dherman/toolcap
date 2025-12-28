@@ -100,7 +100,7 @@ Validate the full system with a real agent.
 - [x] Set up test environment with `sacp-conductor`
 - [x] Configure Zed to use Toolcap as a proxy to Claude Code ACP
 - [x] Create test ruleset with allow/deny rules
-- [ ] Verify allowed commands execute without prompts
-- [ ] Verify denied commands are blocked
+- [x] Verify allowed commands execute without prompts
+- [x] Verify denied commands are blocked
 - [ ] Verify unknown commands prompt the user
 - [ ] Document integration setup steps

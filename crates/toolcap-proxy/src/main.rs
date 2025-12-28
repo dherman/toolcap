@@ -57,9 +57,9 @@ impl JrMessageHandler for ToolcapProxyHandler {
 
         // Use MatchMessageFrom to handle specific request types
         MatchMessageFrom::new(message, &cx)
-            // Handle permission requests from the client
+            // Handle permission requests from the agent (going to client for approval)
             .if_request_from(
-                Client,
+                Agent,
                 async move |req: RequestPermissionRequest, request_cx: JrRequestCx<_>| {
                     let command_info = extract_command_info(&req);
                     debug!("Evaluating permission request: {}", command_info);
@@ -73,9 +73,9 @@ impl JrMessageHandler for ToolcapProxyHandler {
                             request_cx.respond(response)
                         }
                         PermissionDecision::Forward => {
-                            info!("Forwarding request to agent: {}", command_info);
-                            // Forward to agent using forward_to_request_cx (non-blocking)
-                            cx.send_request_to(Agent, req)
+                            info!("Forwarding request to client: {}", command_info);
+                            // Forward to client for user decision
+                            cx.send_request_to(Client, req)
                                 .forward_to_request_cx(request_cx)
                         }
                     }

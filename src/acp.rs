@@ -58,11 +58,18 @@ impl Operation {
     ///
     /// This extracts the tool kind and relevant data from the request to create
     /// the appropriate `Operation` variant.
+    ///
+    /// When `kind` is not specified in the request, this function attempts to
+    /// infer it from the `raw_input` fields (e.g., presence of "command" suggests
+    /// an Execute operation).
     pub fn from_request(req: &RequestPermissionRequest) -> Self {
         let fields = &req.tool_call.fields;
 
-        // Get the tool kind, defaulting to Other if not specified
-        let kind = fields.kind.unwrap_or_default();
+        // Try to get explicit kind, or infer from raw_input
+        let kind = fields
+            .kind
+            .or_else(|| infer_kind_from_input(fields.raw_input.as_ref()))
+            .unwrap_or_default();
 
         match kind {
             ToolKind::Execute => {
@@ -115,6 +122,46 @@ impl Operation {
             }
         }
     }
+}
+
+/// Infers the tool kind from the raw_input fields.
+///
+/// This is used when the agent doesn't explicitly specify a `kind` in the
+/// permission request. We look for characteristic fields to determine the
+/// operation type.
+fn infer_kind_from_input(input: Option<&serde_json::Value>) -> Option<ToolKind> {
+    let obj = input?.as_object()?;
+
+    // Check for Execute indicators (command, cmd, script)
+    if obj.contains_key("command") || obj.contains_key("cmd") || obj.contains_key("script") {
+        return Some(ToolKind::Execute);
+    }
+
+    // Check for file operation indicators
+    if obj.contains_key("file_path") || obj.contains_key("path") || obj.contains_key("file") {
+        // Distinguish between read/edit based on other fields
+        if obj.contains_key("content") || obj.contains_key("new_content") {
+            return Some(ToolKind::Edit);
+        }
+        return Some(ToolKind::Read);
+    }
+
+    // Check for Move indicators
+    if obj.contains_key("from") && obj.contains_key("to") {
+        return Some(ToolKind::Move);
+    }
+
+    // Check for Search indicators
+    if obj.contains_key("query") && !obj.contains_key("url") {
+        return Some(ToolKind::Search);
+    }
+
+    // Check for Fetch indicators
+    if obj.contains_key("url") {
+        return Some(ToolKind::Fetch);
+    }
+
+    None
 }
 
 impl Ruleset {
